@@ -1,6 +1,6 @@
 import math
 import pygame as pg
-import map
+from map import Map
 import numpy as np
 
 from pygame.math import Vector2
@@ -15,17 +15,19 @@ class Player:
         self.speed = speed
         self.rotation_speed = rotation_speed 
 
-    def move(self, dir: Vector2, delta: float):
+    def move(self, dir: Vector2, delta: float, map: Map):
         basis = np.matrix([[self.direction.y, -self.direction.x], [self.direction.x, self.direction.y]]) 
         final_direction = np.array([dir.x, dir.y]) @ basis
-        self.position += Vector2(final_direction[0, 0], final_direction[0, 1]) * self.speed * delta
+        final_position = self.position + Vector2(final_direction[0, 0], final_direction[0, 1]) * self.speed * delta
+        if not map.is_wall(int(final_position.x), int(final_position.y)):
+            self.position = final_position
 
     def rotate(self, delta: float):
         rotation = -pg.mouse.get_rel()[0] / 960.0
         self.direction.rotate_rad_ip(rotation * self.rotation_speed * delta * 10.0)
         self.camera_plane = Vector2(self.direction.y, -self.direction.x) * self.plane_length
 
-    def render_view(self, screen: pg.Surface, map: map.Map):
+    def render_view(self, screen: pg.Surface, map: Map):
         screen_width = screen.get_width()
         screen_height = screen.get_height()
 

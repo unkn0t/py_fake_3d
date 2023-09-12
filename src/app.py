@@ -1,6 +1,5 @@
-# import pygame.ftfont
 import pygame as pg
-# import pygame.freetype
+import pygame.freetype
 from player import Player
 from map import Map
 from pygame.math import Vector2
@@ -44,7 +43,7 @@ class Application:
         self.running = False
         self.screen = create_screen()
         self.clock = pg.time.Clock()
-        # self.font = pygame.freetype.SysFont('iosevka', 20, bold=True)
+        self.font = pygame.freetype.SysFont('iosevka', 20, bold=True)
         self.axis = Vector2(0, 0)
         pg.mouse.set_visible(False)
         pg.event.set_grab(True)
@@ -66,7 +65,7 @@ class Application:
         while self.running:     
             self.__handle_events()
             self.player.rotate(dt)
-            self.player.move(self.axis, dt)
+            self.player.move(self.axis, dt, self.map)
             self.__render(dt)
             dt = self.clock.tick() / 1000.0
     
@@ -78,8 +77,7 @@ class Application:
 
     def __render_fps_counter(self, delta: float):
         fps = 1.0 / delta
-        # self.font.render_to(self.screen, (10, 10), f"FPS: {fps}", pg.Color(0, 255, 0))
-        # self.screen.blit(text, (10, 10)) 
+        self.font.render_to(self.screen, (10, 10), f"FPS: {fps}", pg.Color(0, 255, 0))
 
     def __handle_events(self):
         for event in pg.event.get():
