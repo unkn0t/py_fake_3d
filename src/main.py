@@ -1,13 +1,12 @@
 import logging
-
-from app import Application
+from engine import *
 
 def main():
     logger = logging.getLogger()
 
     try:
-        app = Application()
-        app.run()
+        application = app.App()
+        application.run()
     except Exception as e:
         logger.exception("Exception Occurred:  " + str(e))
 
