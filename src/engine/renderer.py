@@ -63,12 +63,12 @@ class Renderer:
         
         self.shader.use()
         self.shader.set_vec2("iResolution", self.viewport)
+        self.shader.set_textures("iTextures", [0, 1, 2, 3, 4, 5, 6, 7])
 
     def render_triangle(self):
         self.shader.use()
         self.shader.set_vec2("iViewDirection", self.camera.view_direction)
         self.shader.set_vec2("iPosition", self.camera.position)
-        # self.shader.set_float("iTime", pygame.time.get_ticks() / 1000.0)
         glBindVertexArray(self.vao) 
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, self.indices)
 
@@ -77,7 +77,7 @@ class Renderer:
         glClear(GL_COLOR_BUFFER_BIT)
         self.render_triangle()
         self.render_text(f'Frame time: {self.dt}ms', glm.vec2(10, 10))
-        self.render_text(f'FPS: {self.clock.get_fps()}', glm.vec2(10, 45))
+        self.render_text(f'FPS: {int(self.clock.get_fps())}', glm.vec2(10, 45))
         display.flip()
         self.dt = self.clock.tick()
 
@@ -102,6 +102,7 @@ class Camera:
         self.tex_height = 64
         self.tex_width = 64
         self.textures = []
+        self.texture_ids = np.zeros(8, dtype=np.uint)
         self.load_textures()
 
     def load_textures(self):
@@ -113,9 +114,18 @@ class Camera:
         self.textures.append(pygame.image.load('pics/mossy.png'))
         self.textures.append(pygame.image.load('pics/wood.png'))
         self.textures.append(pygame.image.load('pics/colorstone.png'))
-
+        
         for i in range(len(self.textures)):
-            self.textures[i] = pygame.image.tobytes(self.textures[i], 'RGB')
+            glActiveTexture(0x84C0 + i)
+            self.textures[i] = pygame.image.tobytes(self.textures[i], 'RGB', True)
+            self.texture_ids[i] = glGenTextures(1)
+            glBindTexture(GL_TEXTURE_2D, self.texture_ids[i])
+    
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+            
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, self.tex_width, self.tex_height, 0, GL_RGB, GL_UNSIGNED_BYTE, self.textures[i])
+            glGenerateMipmap(GL_TEXTURE_2D);
 
     def move(self, direction: glm.vec2, speed: float, dt: float):
         basis = glm.mat2x2(self.view_direction.y, self.view_direction.x, -self.view_direction.x, self.view_direction.y)
@@ -125,87 +135,9 @@ class Camera:
             self.position = final_position
 
     def rotate(self, dt: float):
-        rotation = -pygame.mouse.get_rel()[0] / 960.0
-        self.view_direction = glm.rotateZ(glm.vec3(self.view_direction.x, self.view_direction.y, 0), rotation * dt * 400.0).xy
+        rotation = -pygame.mouse.get_rel()[0]
+        self.view_direction = glm.rotateZ(glm.vec3(self.view_direction.x, self.view_direction.y, 0), rotation * dt).xy
         self.plane = Plane(self.fov, self.view_direction)
-
-    def render_view(self, screen: pygame.Surface):
-        for x in range(int(self.viewport.x)):
-            uv_x = 2.0 * x / self.viewport.x - 1.0
-            ray_direction = self.view_direction + self.plane.direction * uv_x
-           
-            map_cell_x = int(self.position.x)
-            map_cell_y = int(self.position.y)
-            
-            delta_distance = glm.vec2(1e30, 1e30)
-            side_distance = glm.vec2()
-            
-            if ray_direction.x != 0.0:
-                delta_distance.x = glm.abs(1.0 / ray_direction.x)
-            if ray_direction.y != 0.0:
-                delta_distance.y = glm.abs(1.0 / ray_direction.y)
-
-            if ray_direction.x < 0:
-                step_x = -1
-                side_distance.x = (self.position.x - map_cell_x) * delta_distance.x
-            else:
-                step_x = 1
-                side_distance.x = (map_cell_x - self.position.x + 1.0) * delta_distance.x
-
-            if ray_direction.y < 0:
-                step_y = -1
-                side_distance.y = (self.position.y - map_cell_y) * delta_distance.y
-            else:
-                step_y = 1
-                side_distance.y = (map_cell_y - self.position.y + 1.0) * delta_distance.y
-
-            hit = False
-            side = False
-            while not hit:
-                if side_distance.x < side_distance.y:
-                    side_distance.x += delta_distance.x
-                    map_cell_x += step_x
-                    side = False
-                else:
-                    side_distance.y += delta_distance.y
-                    map_cell_y += step_y
-                    side = True
-                
-                hit = MAP[map_cell_x, map_cell_y] >= 1
-
-            texture_index = MAP[map_cell_x, map_cell_y] - 1
-
-            if side:
-                wall_distance = side_distance.y - delta_distance.y
-                wall_x = self.position.x + wall_distance * ray_direction.x
-            else:
-                wall_distance = side_distance.x - delta_distance.x
-                wall_x = self.position.y + wall_distance * ray_direction.y
-            
-            wall_x -= glm.floor(wall_x) 
-            tex_x = int(wall_x * self.tex_width)
-
-            if not side and ray_direction.x > 0: 
-                tex_x = self.tex_width - tex_x - 1
-            if side and ray_direction.y < 0: 
-                tex_x = self.tex_width - tex_x - 1
-            
-            line_height = int(self.viewport.y / wall_distance)
-            step = 1.0 * self.tex_height / line_height
-
-            draw_start = int(max(-line_height // 2 + self.viewport.y // 2, 0))
-            draw_end = int(min(line_height // 2 + self.viewport.y // 2, self.viewport.y - 1))
-            tex_pos = (draw_start - self.viewport.y // 2 + line_height // 2) * step
-      
-            for y in range(draw_start, draw_end):
-                tex_y = int(tex_pos) & int(self.tex_height - 1)
-                tex_pos += step
-                offset = 3 * self.tex_width * tex_y + 3 * tex_x
-                texture = self.textures[texture_index];
-                color = (texture[offset] << 16) + (texture[offset + 1] << 8) + texture[offset + 2] 
-                if side: 
-                    color = (color >> 1) & 8355711;
-                screen.set_at((x, y), color)
 
 MAP = np.array([
 [4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,7,7,7,7,7,7,7,7],

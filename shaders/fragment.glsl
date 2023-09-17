@@ -4,6 +4,7 @@ out vec4 fragColor;
 uniform vec2 iResolution;
 uniform vec2 iViewDirection;
 uniform vec2 iPosition;
+uniform sampler2D iTextures[8];
 
 const int MAP_WIDTH = 24;
 const int MAP_HEIGHT = 24;
@@ -37,6 +38,55 @@ const int MAP[24 * 24] = int[] (
 const float FOV = 70.0;
 const float plane_len = tan(radians(FOV / 2.0));
 
+vec3 floor_cast(vec2 plane_dir) 
+{
+    // rayDir for leftmost ray (x = 0) and rightmost ray (x = w)
+    float ray_dir_x0 = iViewDirection.x - plane_dir.x;
+    float ray_dir_y0 = iViewDirection.y - plane_dir.y;
+    float ray_dir_x1 = iViewDirection.x + plane_dir.x;
+    float ray_dir_y1 = iViewDirection.y + plane_dir.y;
+
+    // Current y position compared to the center of the screen (the horizon)
+    float p = gl_FragCoord.y - iResolution.y / 2;
+
+    // Vertical position of the camera.
+    float posZ = 0.5 * iResolution.y;
+
+    // Horizontal distance from the camera to the floor for the current row.
+    // 0.5 is the z position exactly in the middle between floor and ceiling.
+    float rowDistance = abs(posZ / p);
+
+    // calculate the real world step vector we have to add for each x (parallel to camera plane)
+    // adding step by step avoids multiplications with a weight in the inner loop
+    float floorStepX = rowDistance * (ray_dir_x1 - ray_dir_x0) / iResolution.x;
+    float floorStepY = rowDistance * (ray_dir_y1 - ray_dir_y0) / iResolution.x;
+
+    // real world coordinates of the leftmost column. This will be updated as we step to the right.
+    float floorX = iPosition.x + rowDistance * ray_dir_x0 + floorStepX * gl_FragCoord.x;
+    float floorY = iPosition.y + rowDistance * ray_dir_y0 + floorStepY * gl_FragCoord.x;
+    
+    // the cell coord is simply got from the integer parts of floorX and floorY
+    int cellX = int(floorX);
+    int cellY = int(floorY);
+
+    // get the texture coordinate from the fractional part
+    float tx = floorX - cellX;
+    float ty = floorY - cellY;
+
+    // choose texture and draw the pixel
+    int floorTexture = 3;
+    int ceilingTexture = 6;
+    
+    vec3 color = vec3(0, 0, 0);
+    // floor
+    if (p < 0) {
+        color = texture2D(iTextures[floorTexture], vec2(tx, ty) / 2.0).rgb;
+    } else {
+        color = texture2D(iTextures[ceilingTexture], vec2(tx, ty) / 2.0).rgb;
+    }
+    return color / 2.0;
+}
+
 void main()
 {
     vec2 plane_dir = vec2(iViewDirection.y, -iViewDirection.x) * plane_len;
@@ -67,22 +117,35 @@ void main()
         hit = MAP[map_cell.y * MAP_WIDTH + map_cell.x] >= 1;
     }
     
+    int tex_index = MAP[map_cell.y * MAP_WIDTH + map_cell.x] - 1;
+    
     float wall_dist = side_dist.x - delta_dist.x;
+    float wall_x = iPosition.y + wall_dist * ray_dir.y;
     if (side) {
         wall_dist = side_dist.y - delta_dist.y;
+        wall_x = iPosition.x + wall_dist * ray_dir.x;
     }
+    
+    wall_x -= floor(wall_x);
     
     int height = int(iResolution.y);
     int line_height = int(iResolution.y / wall_dist);
-    int draw_start = max(-line_height / 2 + height / 2, 0);
+    int real_draw_start = -line_height / 2 + height / 2;
+    int draw_start = max(real_draw_start, 0);
     int draw_end = min(line_height / 2 + height / 2, height - 1);
-    
-    vec3 color = vec3(0, 0, 0);
+
+    vec3 color = floor_cast(plane_dir);
     if (int(gl_FragCoord.y) >= draw_start && int(gl_FragCoord.y) <= draw_end) {
-        color = vec3(1, 1, 1);
-    }
-    if (side) {
-        color /= 2.0;
+        float wall_y = (gl_FragCoord.y - real_draw_start) / line_height;
+ 
+        vec2 tex_pos = vec2(wall_x, wall_y);
+        if ((!side && ray_dir.x > 0) || (side && ray_dir.y < 0)) { 
+            tex_pos.x = 1.0 - tex_pos.x;
+        }
+        color = texture2D(iTextures[tex_index], tex_pos).rgb;
+        if (side) {
+            color /= 2.0;
+        }
     }
 
     fragColor = vec4(color, 1.0);

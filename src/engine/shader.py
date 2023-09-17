@@ -56,6 +56,10 @@ class Shader:
 
     def use(self):
         glUseProgram(self.program)
+    
+    def set_int(self, name: str, value: int):
+        location = glGetUniformLocation(self.program, name)
+        glUniform1i(location, value)
 
     def set_float(self, name: str, value: float):
         location = glGetUniformLocation(self.program, name)
@@ -64,4 +68,8 @@ class Shader:
     def set_vec2(self, name: str, value: glm.vec2):
         location = glGetUniformLocation(self.program, name)
         glUniform2f(location, value.x, value.y)
+
+    def set_textures(self, name: str, indices):
+        location = glGetUniformLocation(self.program, name)
+        glUniform1iv(location, len(indices), indices)
 
